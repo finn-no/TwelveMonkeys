@@ -9,9 +9,15 @@
     <packaging>pom</packaging>
     <name>Twelvemonkeys</name>
 
-    <properties>
-        <maven.version.minimum>3.0</maven.version.minimum>
-    </properties>
+    <prerequisites>
+        <maven>3.0</maven>
+    </prerequisites>
+
+    <scm>
+        <connection>scm:git:git@github.com:finn-no/TwelveMonkeys.git</connection>
+        <url>scm:git:git@github.com:finn-no/TwelveMonkeys.git</url>
+        <developerConnection>scm:git:git@github.com:finn-no/TwelveMonkeys.git</developerConnection>
+    </scm>
 
     <modules>
         <module>common</module>
