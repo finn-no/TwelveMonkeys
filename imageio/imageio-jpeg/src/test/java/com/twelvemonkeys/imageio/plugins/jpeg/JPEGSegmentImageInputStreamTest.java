@@ -31,6 +31,7 @@ package com.twelvemonkeys.imageio.plugins.jpeg;
 import com.twelvemonkeys.imageio.metadata.jpeg.JPEG;
 import com.twelvemonkeys.imageio.metadata.jpeg.JPEGSegment;
 import com.twelvemonkeys.imageio.metadata.jpeg.JPEGSegmentUtil;
+import com.twelvemonkeys.imageio.metadata.xmp.XMP;
 import com.twelvemonkeys.imageio.stream.URLImageInputStreamSpi;
 import org.junit.Test;
 import org.mockito.internal.matchers.LessOrEqual;
@@ -102,7 +103,7 @@ public class JPEGSegmentImageInputStreamTest {
 
         assertThat(length, new LessOrEqual<Long>(10203l)); // In no case should length increase
 
-        assertEquals(9495l, length); // May change, if more chunks are passed to reader...
+        assertEquals(9625, length); // May change, if more chunks are passed to reader...
     }
 
     @Test
@@ -110,13 +111,19 @@ public class JPEGSegmentImageInputStreamTest {
         ImageInputStream stream = new JPEGSegmentImageInputStream(ImageIO.createImageInputStream(getClassLoaderResource("/jpeg/no-image-types-rgb-us-web-coated-v2-ms-photogallery-exif.jpg")));
         List<JPEGSegment> appSegments = JPEGSegmentUtil.readSegments(stream, JPEGSegmentUtil.APP_SEGMENTS);
 
-        assertEquals(2, appSegments.size());
+        assertEquals(4, appSegments.size());
 
         assertEquals(JPEG.APP0, appSegments.get(0).marker());
         assertEquals("JFIF", appSegments.get(0).identifier());
 
-        assertEquals(JPEG.APP14, appSegments.get(1).marker());
-        assertEquals("Adobe", appSegments.get(1).identifier());
+        assertEquals(JPEG.APP1, appSegments.get(1).marker());
+        assertEquals("Exif", appSegments.get(1).identifier());
+
+        assertEquals(65505 ,appSegments.get(2).marker());
+        assertEquals(XMP.NS_XAP,appSegments.get(2).identifier());
+
+        assertEquals(JPEG.APP14, appSegments.get(3).marker());
+        assertEquals("Adobe", appSegments.get(3).identifier());
 
         // And thus, no Exif, no ICC_PROFILE or other segments
     }
