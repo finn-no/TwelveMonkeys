@@ -29,11 +29,21 @@
 package com.twelvemonkeys.imageio.plugins.iff;
 
 import com.twelvemonkeys.imageio.util.ImageReaderAbstractTestCase;
+import org.junit.Test;
 
+import javax.imageio.ImageIO;
 import javax.imageio.spi.ImageReaderSpi;
 import java.awt.*;
+import java.awt.image.BufferedImage;
+import java.awt.image.ColorModel;
+import java.awt.image.IndexColorModel;
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
 /**
  * IFFImageReaderTestCase
@@ -43,23 +53,34 @@ import java.util.List;
  * @version $Id: IFFImageReaderTestCase.java,v 1.0 Apr 1, 2008 10:39:17 PM haraldk Exp$
  */
 public class IFFImageReaderTest extends ImageReaderAbstractTestCase<IFFImageReader> {
-    // TODO: Need test for IFF PBM
     protected List<TestData> getTestData() {
         return Arrays.asList(
                 // 32 bit - Ok
-                new TestData(getClassLoaderResource("/iff/test.iff"), new Dimension(300, 200)), // 32 bit
+                new TestData(getClassLoaderResource("/iff/test.iff"), new Dimension(300, 200)),
                 // 24 bit - Ok
-                new TestData(getClassLoaderResource("/iff/survivor.iff"), new Dimension(800, 600)), // 24 bit
+                new TestData(getClassLoaderResource("/iff/survivor.iff"), new Dimension(800, 600)),
                 // HAM6 - Ok (a lot of visual "fringe", would be interesting to see on a real HAM display)
-                new TestData(getClassLoaderResource("/iff/A4000T_HAM6.IFF"), new Dimension(320, 512)), // ham6
-                // HAM8 - Ok (PackBits decoder chokes on padding byte)
-                new TestData(getClassLoaderResource("/iff/A4000T_HAM8.IFF"), new Dimension(628, 512)), // ham8
+                new TestData(getClassLoaderResource("/iff/A4000T_HAM6.IFF"), new Dimension(320, 512)),
+                // HAM8 - Ok
+                new TestData(getClassLoaderResource("/iff/A4000T_HAM8.IFF"), new Dimension(628, 512)),
+                // 2 color indexed - Ok
+                new TestData(getClassLoaderResource("/iff/owl.iff"), new Dimension(160, 174)),
                 // 8 color indexed - Ok
-                new TestData(getClassLoaderResource("/iff/AmigaBig.iff"), new Dimension(300, 200)), // 8 color
-                // 8 color indexed - Ok
-                new TestData(getClassLoaderResource("/iff/AmigaAmiga.iff"), new Dimension(200, 150)), // 8 color
-                // Ok (PackBits decoder chokes on padding byte)
-                new TestData(getClassLoaderResource("/iff/Abyss.iff"), new Dimension(320, 400))
+                new TestData(getClassLoaderResource("/iff/AmigaAmiga.iff"), new Dimension(200, 150)),
+                // 16 color indexed - Ok
+                new TestData(getClassLoaderResource("/iff/Lion.iff"), new Dimension(704, 480)),
+                // 32 color indexed - Ok
+                new TestData(getClassLoaderResource("/iff/GoldPorsche.iff"), new Dimension(320, 200)),
+                // 64 color indexed EHB - Ok
+                new TestData(getClassLoaderResource("/iff/Bryce.iff"), new Dimension(320, 200)),
+                // 256 color indexed - Ok
+                new TestData(getClassLoaderResource("/iff/IKKEGOD.iff"), new Dimension(640, 256)),
+                // PBM, indexed - Ok
+                new TestData(getClassLoaderResource("/iff/ASH.PBM"), new Dimension(320, 240)),
+                // 16 color indexed, multi palette (PCHG) - Ok
+                new TestData(getClassLoaderResource("/iff/Manhattan.PCHG"), new Dimension(704, 440)),
+                // 16 color indexed, multi palette (PCHG + SHAM) - Ok
+                new TestData(getClassLoaderResource("/iff/Somnambulist-2.SHAM"), new Dimension(704, 440))
         );
     }
 
@@ -81,5 +102,38 @@ public class IFFImageReaderTest extends ImageReaderAbstractTestCase<IFFImageRead
 
     protected List<String> getMIMETypes() {
         return Arrays.asList("image/iff", "image/x-iff");
+    }
+
+    // Regression tests
+
+    @Test
+    public void testEHBColors() throws IOException {
+        IFFImageReader reader = createReader();
+        reader.setInput(ImageIO.createImageInputStream(getClassLoaderResource("/iff/Bryce.iff")));
+
+        BufferedImage image = reader.read(0);
+        assertEquals(BufferedImage.TYPE_BYTE_INDEXED, image.getType());
+
+        ColorModel colorModel = image.getColorModel();
+        assertNotNull(colorModel);
+        assertTrue(colorModel instanceof IndexColorModel);
+
+        IndexColorModel indexColorModel = (IndexColorModel) colorModel;
+
+        assertEquals(64, indexColorModel.getMapSize());
+
+        byte[] reds = new byte[indexColorModel.getMapSize()];
+        indexColorModel.getReds(reds);
+        byte[] blues = new byte[indexColorModel.getMapSize()];
+        indexColorModel.getBlues(blues);
+        byte[] greens = new byte[indexColorModel.getMapSize()];
+        indexColorModel.getGreens(greens);
+
+        for (int i = 0; i < 32; i++) {
+            // Make sure the color model is really EHB
+            assertEquals("red", (reds[i] & 0xff) / 2, reds[i + 32] & 0xff);
+            assertEquals("blue", (blues[i] & 0xff) / 2, blues[i + 32] & 0xff);
+            assertEquals("green", (greens[i] & 0xff) / 2, greens[i + 32] & 0xff);
+        }
     }
 }

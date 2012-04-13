@@ -52,6 +52,19 @@ abstract class IFFChunk {
 
     abstract void writeChunk(DataOutput pOutput) throws IOException;
 
+    protected static void skipData(final DataInput pInput, final int chunkLength, final int dataReadSoFar) throws IOException {
+        int toSkip = chunkLength - dataReadSoFar;
+
+        while (toSkip > 0) {
+            toSkip -= pInput.skipBytes(toSkip);
+        }
+
+        // Read pad
+        if (chunkLength % 2 != 0) {
+            pInput.readByte();
+        }
+    }
+
     public String toString() {
         return IFFUtil.toChunkStr(chunkId) + " chunk (" + chunkLength + " bytes)";
     }

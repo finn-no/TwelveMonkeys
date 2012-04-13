@@ -28,6 +28,7 @@
 
 package com.twelvemonkeys.imageio.plugins.iff;
 
+import com.twelvemonkeys.image.ResampleOp;
 import com.twelvemonkeys.imageio.ImageReaderBase;
 import com.twelvemonkeys.imageio.stream.BufferedImageInputStream;
 import com.twelvemonkeys.imageio.util.IIOUtil;
@@ -94,7 +95,9 @@ public class IFFImageReader extends ImageReaderBase {
     // http://home.comcast.net/~erniew/lwsdk/docs/filefmts/ilbm.html
     // http://www.fileformat.info/format/iff/spec/7866a9f0e53c42309af667c5da3bd426/view.htm
     //   - Contains definitions of some "new" chunks, as well as alternative FORM types
-    // http://amigan.1emu.net/reg/iff.html
+    // http://amigan.1emu.net/index/iff.html
+
+    // TODO: Allow reading rasters for HAM6/HAM8 and multipalette images that are expanded to RGB (24 bit) during read.
 
     private BMHDChunk header;
     private CMAPChunk colorMap;
@@ -102,6 +105,7 @@ public class IFFImageReader extends ImageReaderBase {
     @SuppressWarnings({"FieldCanBeLocal"})
     private GRABChunk grab;
     private CAMGChunk viewPort;
+    private MultiPalette paletteChange;
     private int formType;
     private long bodyStart;
 
@@ -127,6 +131,7 @@ public class IFFImageReader extends ImageReaderBase {
     protected void resetMembers() {
         header = null;
         colorMap = null;
+        paletteChange = null;
         body = null;
         viewPort = null;
         formType = 0;
@@ -136,15 +141,16 @@ public class IFFImageReader extends ImageReaderBase {
     }
 
     private void readMeta() throws IOException {
-        if (imageInput.readInt() != IFF.CHUNK_FORM) {
-            throw new IIOException("Unknown file format for IFFImageReader");
+        int chunkType = imageInput.readInt();
+        if (chunkType != IFF.CHUNK_FORM) {
+            throw new IIOException(String.format("Unknown file format for IFFImageReader, expected 'FORM': %s", IFFUtil.toChunkStr(chunkType)));
         }
 
         int remaining = imageInput.readInt() - 4; // We'll read 4 more in a sec
 
         formType = imageInput.readInt();
         if (formType != IFF.TYPE_ILBM && formType != IFF.TYPE_PBM) {
-            throw new IIOException("Only IFF (FORM) type ILBM and PBM supported: " + IFFUtil.toChunkStr(formType));
+            throw new IIOException(String.format("Only IFF FORM types 'ILBM' and 'PBM ' supported: %s", IFFUtil.toChunkStr(formType)));
         }
 
         //System.out.println("IFF type FORM " + toChunkStr(type));
@@ -177,7 +183,8 @@ public class IFFImageReader extends ImageReaderBase {
                     if (colorMap != null) {
                         throw new IIOException("Multiple CMAP chunks not allowed");
                     }
-                    colorMap = new CMAPChunk(length, header, viewPort);
+
+                    colorMap = new CMAPChunk(length);
                     colorMap.readChunk(imageInput);
 
                     //System.out.println(colorMap);
@@ -198,8 +205,59 @@ public class IFFImageReader extends ImageReaderBase {
                     viewPort = new CAMGChunk(length);
                     viewPort.readChunk(imageInput);
 
-                    //System.out.println(viewPort);
+//                    System.out.println(viewPort);
                     break;
+                case IFF.CHUNK_PCHG:
+                    if (paletteChange instanceof PCHGChunk) {
+                        throw new IIOException("Multiple PCHG chunks not allowed");
+                    }
+
+                    PCHGChunk pchg = new PCHGChunk(length);
+                    pchg.readChunk(imageInput);
+
+                    // Always prefer PCHG style palette changes
+                    paletteChange = pchg;
+
+//                    System.out.println(pchg);
+                    break;
+
+                case IFF.CHUNK_SHAM:
+                    if (paletteChange instanceof SHAMChunk) {
+                        throw new IIOException("Multiple SHAM chunks not allowed");
+                    }
+
+                    SHAMChunk sham = new SHAMChunk(length);
+                    sham.readChunk(imageInput);
+
+                    // NOTE: We prefer PHCG to SHAM style palette changes, if both are present
+                    if (paletteChange == null) {
+                        paletteChange = sham;
+                    }
+
+//                    System.out.println(sham);
+                    break;
+
+                case IFF.CHUNK_CTBL:
+                    if (paletteChange instanceof CTBLChunk) {
+                        throw new IIOException("Multiple CTBL chunks not allowed");
+                    }
+
+                    CTBLChunk ctbl = new CTBLChunk(length);
+                    ctbl.readChunk(imageInput);
+
+                    // NOTE: We prefer PHCG to CTBL style palette changes, if both are present
+                    if (paletteChange == null) {
+                        paletteChange = ctbl;
+                    }
+
+//                    System.out.println(ctbl);
+                    break;
+
+                case IFF.CHUNK_JUNK:
+                    // Always skip junk chunks
+                    IFFChunk.skipData(imageInput, length, 0);
+                    break;
+
                 case IFF.CHUNK_BODY:
                     if (body != null) {
                         throw new IIOException("Multiple BODY chunks not allowed");
@@ -209,16 +267,15 @@ public class IFFImageReader extends ImageReaderBase {
                     bodyStart = imageInput.getStreamPosition();
 
                     // NOTE: We don't read the body here, it's done later in the read(int, ImageReadParam) method
-
                     // Done reading meta
                     return;
                 default:
-                    // TODO: We probably want to store anno chunks as Metadata
-                    // ANNO, DEST, SPRT and more
+                    // TODO: We probably want to store ANNO, TEXT, AUTH, COPY etc chunks as Metadata
+                    // SHAM, ANNO, DEST, SPRT and more
                     IFFChunk generic = new GenericChunk(chunkId, length);
                     generic.readChunk(imageInput);
 
-                    //System.out.println(generic);
+//                    System.out.println(generic);
                     break;
             }
         }
@@ -241,7 +298,7 @@ public class IFFImageReader extends ImageReaderBase {
             //System.out.println(colorMap);
             if (colorMap != null) {
                 //System.out.println("Creating palette!");
-                image = colorMap.createPaletteImage();
+                image = colorMap.createPaletteImage(header, isEHB());
             }
         }
 
@@ -268,7 +325,7 @@ public class IFFImageReader extends ImageReaderBase {
         List<ImageTypeSpecifier> types = Arrays.asList(
                 getRawImageType(pIndex),
                 ImageTypeSpecifier.createFromBufferedImageType(header.bitplanes == 32 ? BufferedImage.TYPE_4BYTE_ABGR : BufferedImage.TYPE_3BYTE_BGR)
-// TODO:               ImageTypeSpecifier.createFromBufferedImageType(header.bitplanes == 32 ? BufferedImage.TYPE_INT_ARGB : BufferedImage.TYPE_INT_RGB),
+                // TODO: ImageTypeSpecifier.createFromBufferedImageType(header.bitplanes == 32 ? BufferedImage.TYPE_INT_ARGB : BufferedImage.TYPE_INT_RGB),
                 // TODO: Allow 32 bit always. Allow RGB and discard alpha, if present?
         );
         return types.iterator();
@@ -297,9 +354,9 @@ public class IFFImageReader extends ImageReaderBase {
             case 8:
                 // 8 bit
                 // May be HAM8
-                if (!isHAM()) {
+                if (!isConvertToRGB()) {
                     if (colorMap != null) {
-                        IndexColorModel cm = colorMap.getIndexColorModel();
+                        IndexColorModel cm = colorMap.getIndexColorModel(header, isEHB());
                         specifier = IndexedImageTypeSpecifier.createFromIndexColorModel(cm);
                         break;
                     }
@@ -323,13 +380,17 @@ public class IFFImageReader extends ImageReaderBase {
         return specifier;
     }
 
+    private boolean isConvertToRGB() {
+        return isHAM() || isPCHG() || isSHAM();
+    }
+
     private void readBody(final ImageReadParam pParam) throws IOException {
         imageInput.seek(bodyStart);
         byteRunStream = null;
 
         // NOTE: colorMap may be null for 8 bit (gray), 24 bit or 32 bit only
         if (colorMap != null) {
-            IndexColorModel cm = colorMap.getIndexColorModel();
+            IndexColorModel cm = colorMap.getIndexColorModel(header, isEHB());
             readIndexed(pParam, imageInput, cm);
         }
         else {
@@ -361,7 +422,7 @@ public class IFFImageReader extends ImageReaderBase {
         }
 
         // Ensure band settings from param are compatible with images
-        checkReadParamBandSettings(pParam, isHAM() ? 3 : 1, image.getSampleModel().getNumBands());
+        checkReadParamBandSettings(pParam, isConvertToRGB() ? 3 : 1, image.getSampleModel().getNumBands());
 
         WritableRaster destination = image.getRaster();
         if (destinationBands != null || offset.x != 0 || offset.y != 0) {
@@ -376,7 +437,7 @@ public class IFFImageReader extends ImageReaderBase {
         ColorModel cm;
         WritableRaster raster;
 
-        if (isHAM()) {
+        if (isConvertToRGB()) {
             // TODO: If HAM6, use type USHORT_444_RGB or 2BYTE_444_RGB?
             // Or create a HAMColorModel, if at all possible?
             // TYPE_3BYTE_BGR
@@ -398,9 +459,8 @@ public class IFFImageReader extends ImageReaderBase {
 
         final byte[] row = new byte[width * 8];
 
-        //System.out.println("Data length: " + data.length);
-        //System.out.println("PlaneData length: " + planeData.length * planeData[0].length);
-        //System.out.println("Row length: " + row.length);
+//        System.out.println("PlaneData length: " + planeData.length);
+//        System.out.println("Row length: " + row.length);
 
         final byte[] data = ((DataBufferByte) raster.getDataBuffer()).getData();
 
@@ -433,14 +493,15 @@ public class IFFImageReader extends ImageReaderBase {
                 if (isHAM()) {
                     hamToRGB(row, pModel, data, 0);
                 }
+                else if (isConvertToRGB()) {
+                    multiPaletteToRGB(srcY, row, pModel, data, 0);
+                }
                 else {
                     raster.setDataElements(0, 0, width, 1, row);
                 }
             }
             else if (formType == IFF.TYPE_PBM) {
-                // TODO: Arraycopy might not be necessary, if it's okay with row larger than width
-                System.arraycopy(planeData, 0, row, 0, header.bitplanes * planeWidth);
-                raster.setDataElements(0, 0, width, 1, row);
+                raster.setDataElements(0, 0, width, 1, planeData);
             }
             else {
                 throw new AssertionError(String.format("Unsupported FORM type: %s", formType));
@@ -449,7 +510,7 @@ public class IFFImageReader extends ImageReaderBase {
             int dstY = (srcY - aoi.y) / sourceYSubsampling;
             // Handle non-converting raster as special case for performance
             if (cm.isCompatibleRaster(destination)) {
-                // Rasters are compatible, just write to destinaiton
+                // Rasters are compatible, just write to destination
                 if (sourceXSubsampling == 1) {
                     destination.setRect(offset.x, dstY, sourceRow);
 //                    dataElements = raster.getDataElements(aoi.x, 0, aoi.width, 1, dataElements);
@@ -547,7 +608,6 @@ public class IFFImageReader extends ImageReaderBase {
 
         for (int srcY = 0; srcY < height; srcY++) {
             for (int c = 0; c < channels; c++) {
-
                 for (int p = 0; p < planesPerChannel; p++) {
                     readPlaneData(pInput, planeData, p * planeWidth, planeWidth);
                 }
@@ -609,10 +669,12 @@ public class IFFImageReader extends ImageReaderBase {
         switch (header.compressionType) {
             case BMHDChunk.COMPRESSION_NONE:
                 pInput.readFully(pData, pOffset, pPlaneWidth);
+
                 // Uncompressed rows must have even number of bytes
                 if ((header.bitplanes * pPlaneWidth) % 2 != 0) {
                     pInput.readByte();
                 }
+
                 break;
 
             case BMHDChunk.COMPRESSION_BYTE_RUN:
@@ -630,6 +692,7 @@ public class IFFImageReader extends ImageReaderBase {
                             )
                     );
                 }
+
                 byteRunStream.readFully(pData, pOffset, pPlaneWidth);
                 break;
 
@@ -638,8 +701,24 @@ public class IFFImageReader extends ImageReaderBase {
         }
     }
 
-    private void hamToRGB(final byte[] pIndexed, final IndexColorModel pModel,
-                          final byte[] pDest, final int pDestOffset) {
+    private void multiPaletteToRGB(final int row, final byte[] indexed, final IndexColorModel colorModel, final byte[] dest, final int destOffset) {
+        final int width = header.width;
+
+        ColorModel palette = paletteChange.getColorModel(colorModel, row, isLaced());
+
+        for (int x = 0; x < width; x++) {
+            int pixel = indexed[x] & 0xff;
+
+            int rgb = palette.getRGB(pixel);
+
+            int offset = (x * 3) + destOffset;
+            dest[2 + offset] = (byte) ((rgb >> 16) & 0xff);
+            dest[1 + offset] = (byte) ((rgb >>  8) & 0xff);
+            dest[    offset] = (byte) ( rgb        & 0xff);
+        }
+    }
+
+    private void hamToRGB(final byte[] indexed, final IndexColorModel colorModel, final byte[] dest, final int destOffset) {
         final int bits = header.bitplanes;
         final int width = header.width;
         int lastRed = 0;
@@ -647,20 +726,18 @@ public class IFFImageReader extends ImageReaderBase {
         int lastBlue = 0;
 
         for (int x = 0; x < width; x++) {
-            int pixel = pIndexed[x] & 0xff;
+            int pixel = indexed[x] & 0xff;
 
-            //System.out.println("--> ham" + bits);
             int paletteIndex = bits == 6 ? pixel & 0x0f : pixel & 0x3f;
             int indexShift = bits == 6 ? 4 : 2;
             int colorMask = bits == 6 ? 0x0f : 0x03;
-            //System.out.println("palette index=" + paletteIndex);
 
             // Get Hold and Modify bits
             switch ((pixel >> (8 - indexShift)) & 0x03) {
                 case 0x00:// HOLD
-                    lastRed = pModel.getRed(paletteIndex);
-                    lastGreen = pModel.getGreen(paletteIndex);
-                    lastBlue = pModel.getBlue(paletteIndex);
+                    lastRed = colorModel.getRed(paletteIndex);
+                    lastGreen = colorModel.getGreen(paletteIndex);
+                    lastBlue = colorModel.getBlue(paletteIndex);
                     break;
                 case 0x01:// MODIFY BLUE
                     lastBlue = (lastBlue & colorMask) | (paletteIndex << indexShift);
@@ -672,40 +749,79 @@ public class IFFImageReader extends ImageReaderBase {
                     lastGreen = (lastGreen & colorMask) | (paletteIndex << indexShift);
                     break;
             }
-            int offset = (x * 3) + pDestOffset;
-            pDest[2 + offset] = (byte) lastRed;
-            pDest[1 + offset] = (byte) lastGreen;
-            pDest[offset] = (byte) lastBlue;
+
+            int offset = (x * 3) + destOffset;
+            dest[2 + offset] = (byte) lastRed;
+            dest[1 + offset] = (byte) lastGreen;
+            dest[    offset] = (byte) lastBlue;
         }
+    }
+
+    private boolean isSHAM() {
+        // TODO:
+        return false;
+    }
+
+    private boolean isPCHG() {
+        return paletteChange != null;
+    }
+
+    private boolean isEHB() {
+        return viewPort != null && viewPort.isEHB();
     }
 
     private boolean isHAM() {
         return viewPort != null && viewPort.isHAM();
     }
 
+    public boolean isLaced() {
+        return viewPort != null && viewPort.isLaced();
+    }
+
     public static void main(String[] pArgs) throws IOException {
         ImageReader reader = new IFFImageReader();
 
-//        ImageInputStream input = ImageIO.createImageInputStream(new File(pArgs[0]));
-        ImageInputStream input = new BufferedImageInputStream(ImageIO.createImageInputStream(new File(pArgs[0])));
-        boolean canRead = reader.getOriginatingProvider().canDecodeInput(input);
+        boolean scale = false;
+        for (String arg : pArgs) {
+            if (arg.startsWith("-")) {
+                scale = true;
+                continue;
+            }
 
-        System.out.println("Can read: " + canRead);
+            File file = new File(arg);
+            if (!file.isFile()) {
+                continue;
+            }
 
-        if (canRead) {
-            reader.setInput(input);
-            ImageReadParam param = reader.getDefaultReadParam();
-//            param.setSourceRegion(new Rectangle(0, 0, 160, 200));
-//            param.setSourceRegion(new Rectangle(160, 200, 160, 200));
-//            param.setSourceRegion(new Rectangle(80, 100, 160, 200));
-//            param.setDestinationOffset(new Point(80, 100));
-//            param.setSourceSubsampling(3, 3, 0, 0);
-//            param.setSourceBands(new int[]{0, 1, 2});
-//            param.setDestinationBands(new int[]{1, 0, 2});
-            BufferedImage image = reader.read(0, param);
-            System.out.println("image = " + image);
+            try {
+                ImageInputStream input = new BufferedImageInputStream(ImageIO.createImageInputStream(file));
+                boolean canRead = reader.getOriginatingProvider().canDecodeInput(input);
 
-            showIt(image, pArgs[0]);
+                if (canRead) {
+                    reader.setInput(input);
+                    ImageReadParam param = reader.getDefaultReadParam();
+    //            param.setSourceRegion(new Rectangle(0, 0, 160, 200));
+    //            param.setSourceRegion(new Rectangle(160, 200, 160, 200));
+    //            param.setSourceRegion(new Rectangle(80, 100, 160, 200));
+    //            param.setDestinationOffset(new Point(80, 100));
+    //            param.setSourceSubsampling(3, 3, 0, 0);
+    //            param.setSourceBands(new int[]{0, 1, 2});
+    //            param.setDestinationBands(new int[]{1, 0, 2});
+                    BufferedImage image = reader.read(0, param);
+                    System.out.println("image = " + image);
+
+                    if (scale) {
+                        image = new ResampleOp(image.getWidth() / 2, image.getHeight(), ResampleOp.FILTER_LANCZOS).filter(image, null);
+    //                image = ImageUtil.createResampled(image, image.getWidth(), image.getHeight() * 2, Image.SCALE_FAST);
+                    }
+
+                    showIt(image, arg);
+                }
+            }
+            catch (IOException e) {
+                System.err.println("Error reading file: " + file);
+                e.printStackTrace();
+            }
         }
     }
 }

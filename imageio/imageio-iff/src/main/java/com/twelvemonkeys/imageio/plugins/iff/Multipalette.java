@@ -26,53 +26,18 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-package com.twelvemonkeys.imageio.plugins.jpeg;
+package com.twelvemonkeys.imageio.plugins.iff;
 
-import com.twelvemonkeys.imageio.util.ImageWriterAbstractTestCase;
-
-import javax.imageio.ImageWriter;
-import javax.imageio.spi.IIORegistry;
-import javax.imageio.spi.ImageWriterSpi;
-import java.awt.image.BufferedImage;
-import java.awt.image.RenderedImage;
-import java.io.IOException;
-import java.util.Arrays;
-import java.util.List;
+import java.awt.image.ColorModel;
+import java.awt.image.IndexColorModel;
 
 /**
- * JPEGImageWriterTest
+ * MultiPalette
  *
  * @author <a href="mailto:harald.kuhr@gmail.com">Harald Kuhr</a>
  * @author last modified by $Author: haraldk$
- * @version $Id: JPEGImageWriterTest.java,v 1.0 06.02.12 17:05 haraldk Exp$
+ * @version $Id: MultiPalette.java,v 1.0 30.03.12 15:22 haraldk Exp$
  */
-public class JPEGImageWriterTest extends ImageWriterAbstractTestCase {
-
-    private static final JPEGImageWriterSpi SPI = new JPEGImageWriterSpi(lookupDelegateProvider());
-
-    private static ImageWriterSpi lookupDelegateProvider() {
-        return JPEGImageWriterSpi.lookupDelegateProvider(IIORegistry.getDefaultInstance());
-    }
-
-    @Override
-    protected ImageWriter createImageWriter() {
-        try {
-            return SPI.createWriterInstance();
-        }
-        catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    @Override
-    protected List<? extends RenderedImage> getTestData() {
-        return Arrays.asList(
-                new BufferedImage(320, 200, BufferedImage.TYPE_3BYTE_BGR),
-                new BufferedImage(32, 20, BufferedImage.TYPE_INT_RGB),
-                new BufferedImage(32, 20, BufferedImage.TYPE_INT_BGR),
-                new BufferedImage(32, 20, BufferedImage.TYPE_INT_ARGB),
-                new BufferedImage(32, 20, BufferedImage.TYPE_4BYTE_ABGR),
-                new BufferedImage(32, 20, BufferedImage.TYPE_BYTE_GRAY)
-        );
-    }
+interface MultiPalette {
+    ColorModel getColorModel(IndexColorModel colorModel, int rowIndex, boolean laced);
 }
