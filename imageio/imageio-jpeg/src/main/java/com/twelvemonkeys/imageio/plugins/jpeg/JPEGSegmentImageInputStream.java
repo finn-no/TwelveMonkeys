@@ -34,6 +34,7 @@ import javax.imageio.IIOException;
 import javax.imageio.stream.ImageInputStream;
 import javax.imageio.stream.ImageInputStreamImpl;
 import java.io.IOException;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -90,7 +91,7 @@ final class JPEGSegmentImageInputStream extends ImageInputStreamImpl {
                 int marker = stream.readUnsignedShort();
 
                 // TODO: Refactor to make various segments optional, we probably only want the "Adobe" APP14 segment, 'Exif' APP1 and very few others
-                if (isAppSegmentMarker(marker) && marker != JPEG.APP0 && marker != JPEG.APP1 && marker != JPEG.APP14) {
+                if (isAppSegmentMarker(marker) && marker != JPEG.APP0 && !(marker == JPEG.APP1 && isAppSegmentWithId("Exif", stream)) && marker != JPEG.APP14) {
                     int length = stream.readUnsignedShort(); // Length including length field itself
                     stream.seek(realPosition + 2 + length);  // Skip marker (2) + length
                 }
@@ -100,8 +101,18 @@ final class JPEGSegmentImageInputStream extends ImageInputStreamImpl {
                         segments.add(segment);
                     }
                     else {
-                        int length = stream.readUnsignedShort(); // Length including length field itself
-                        segment = new Segment(marker, realPosition, segment.end(), 2 + length);
+                        long length;
+
+                        if (marker == JPEG.SOS) {
+                            // Treat rest of stream as a single segment (scanning for EOI is too much work)
+                            length = Long.MAX_VALUE - realPosition;
+                        }
+                        else {
+                            // Length including length field itself
+                            length = stream.readUnsignedShort() + 2;
+                        }
+
+                        segment = new Segment(marker, realPosition, segment.end(), length);
                         segments.add(segment);
                     }
 
@@ -136,6 +147,38 @@ final class JPEGSegmentImageInputStream extends ImageInputStreamImpl {
         }
         
         return segment;
+    }
+
+    private static boolean isAppSegmentWithId(String segmentId, ImageInputStream stream) throws IOException {
+        notNull(segmentId, "segmentId");
+
+        stream.mark();
+
+        try {
+            int length = stream.readUnsignedShort(); // Length including length field itself
+
+            byte[] data = new byte[Math.max(20, length - 2)];
+            stream.readFully(data);
+
+            return segmentId.equals(asNullTerminatedAsciiString(data, 0));
+        }
+        finally {
+            stream.reset();
+        }
+    }
+
+    static String asNullTerminatedAsciiString(final byte[] data, final int offset) {
+        for (int i = 0; i < data.length - offset; i++) {
+            if (data[offset + i] == 0 || i > 255) {
+                return asAsciiString(data, offset, offset + i);
+            }
+        }
+
+        return null;
+    }
+
+    static String asAsciiString(final byte[] data, final int offset, final int length) {
+        return new String(data, offset, length, Charset.forName("ascii"));
     }
 
     private void streamInit() throws IOException {

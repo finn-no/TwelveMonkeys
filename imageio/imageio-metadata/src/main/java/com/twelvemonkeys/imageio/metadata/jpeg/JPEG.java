@@ -45,6 +45,8 @@ public interface JPEG {
 
     /** Define Quantization Tables segment marker (DQT). */
     int DQT = 0xFFDB;
+    /** Define Huffman Tables segment marker (DHT). */
+    int DHT = 0xFFC4;
 
     // App segment markers (APPn).
     int APP0 = 0xFFE0;

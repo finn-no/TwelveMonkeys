@@ -28,42 +28,32 @@
 
 package com.twelvemonkeys.imageio.metadata.jpeg;
 
+import com.twelvemonkeys.lang.Validate;
+
 import javax.imageio.IIOException;
 import javax.imageio.ImageIO;
+import javax.imageio.plugins.jpeg.JPEGQTable;
 import javax.imageio.stream.ImageInputStream;
 import java.io.DataInputStream;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
- * JPEGQuality
+ * Determines an approximate JPEG compression quality value from the quantization tables.
  *
  * @author <a href="mailto:harald.kuhr@gmail.com">Harald Kuhr</a>
  * @author last modified by $Author: haraldk$
  * @version $Id: JPEGQuality.java,v 1.0 16.02.12 17:07 haraldk Exp$
  */
-public class JPEGQuality {
-    // TODO: Something for the metadata.jpeg package?
-    // TODO: Make a test that verifies that the values are in line with parameter set to JPEGImageWriter
-
+public final class JPEGQuality {
     static final int NUM_QUANT_TABLES = 4; /* Quantization tables are numbered 0..3 */
     static final int DCT_SIZE_2 = 64; /* DCT_SIZE squared; # of elements in a block */
 
-    public static void main(String[] args) throws IOException {
-        for (String arg : args) {
-            float quality = getJPEGQuality(ImageIO.createImageInputStream(new File(arg)));
-            System.err.println(arg + " quality: " + quality + "/" + (int) (quality * 100));
-        }
-    }
-
-    // TODO: Do we want 1-100 (%) or 0-1 (float) as result? The latter is more in line with the quality parameter given
-    // to the writer (in JPEGImageWriteParam). OTOH, it should also be possible to instruct the writer to use the tables
-    // from the original image directly, which would provide more "accurate" results.
     /**
      * Determines an approximate JPEG compression quality value from the quantization tables.
      * The value will be in the range {@code [0...1]}, where {@code 1} is the best possible value.
-     *
      *
      * @param segments a list of JPEG segments containing the DQT quantization tables.
      * @return a float in the range {@code [0...1]}, representing the JPEG quality,
@@ -71,18 +61,33 @@ public class JPEGQuality {
      * @throws IIOException if a JPEG format error is found during parsing.
      * @throws IOException if an I/O exception occurs during parsing.
      *
+     * @see javax.imageio.plugins.jpeg.JPEGImageWriteParam#setCompressionQuality(float)
      * @see JPEG#DQT
      */
     public static float getJPEGQuality(final List<JPEGSegment> segments) throws IOException {
-        return getJPEGQuality(getQuantizationTables(segments)) / 100f;
+        int quality = getJPEGQuality(getQuantizationTables(segments));
+        return quality >= 0 ? quality / 100f : quality;
     }
 
+    /**
+     * Determines an approximate JPEG compression quality value from the quantization tables.
+     * The value will be in the range {@code [0...1]}, where {@code 1} is the best possible value.
+     *
+     * @param input an image input stream containing JPEG data.
+     * @return a float in the range {@code [0...1]}, representing the JPEG quality,
+     *         or {@code -1} if the quality can't be determined.
+     * @throws IIOException if a JPEG format error is found during parsing.
+     * @throws IOException if an I/O exception occurs during parsing.
+     *
+     * @see javax.imageio.plugins.jpeg.JPEGImageWriteParam#setCompressionQuality(float)
+     * @see JPEG#DQT
+     */
     public static float getJPEGQuality(final ImageInputStream input) throws IOException {
         return getJPEGQuality(JPEGSegmentUtil.readSegments(input, JPEG.DQT, null));
     }
 
     // Adapted from ImageMagick coders/jpeg.c & http://blog.apokalyptik.com/2009/09/16/quality-time-with-your-jpegs/
-    private static int getJPEGQuality(final short[][] quantizationTables) throws IOException {
+    private static int getJPEGQuality(final int[][] quantizationTables) throws IOException {
 //        System.err.println("tables: " + Arrays.deepToString(tables));
 
         // TODO: Determine lossless JPEG
@@ -187,8 +192,23 @@ public class JPEGQuality {
         return -1;
     }
 
-    private static short[][] getQuantizationTables(List<JPEGSegment> dqtSegments) throws IOException {
-        short[][] tables = new short[4][];
+    public static JPEGQTable[] getQTables(final List<JPEGSegment> segments) throws IOException {
+        int[][] tables = getQuantizationTables(segments);
+
+        List<JPEGQTable> qTables = new ArrayList<JPEGQTable>();
+        for (int[] table : tables) {
+            if (table != null) {
+                qTables.add(new JPEGQTable(table));
+            }
+        }
+
+        return qTables.toArray(new JPEGQTable[qTables.size()]);
+    }
+
+    private static int[][] getQuantizationTables(final List<JPEGSegment> dqtSegments) throws IOException {
+        Validate.notNull(dqtSegments, "segments");
+
+        int[][] tables = new int[4][];
 
         // JPEG may contain multiple DQT marker segments
         for (JPEGSegment segment : dqtSegments) {
@@ -222,7 +242,7 @@ public class JPEGQuality {
                 byte[] qtData = new byte[DCT_SIZE_2 * (bits + 1)];
                 data.readFully(qtData);
                 read += qtData.length;
-                tables[num] = new short[DCT_SIZE_2];
+                tables[num] = new int[DCT_SIZE_2];
 
                 // Expand (this is slightly inefficient)
                 switch (bits) {
@@ -241,5 +261,12 @@ public class JPEGQuality {
         }
 
         return tables;
+    }
+
+    public static void main(String[] args) throws IOException {
+        for (String arg : args) {
+            float quality = getJPEGQuality(ImageIO.createImageInputStream(new File(arg)));
+            System.err.println(arg + " quality: " + quality + "/" + (int) (quality * 100));
+        }
     }
 }

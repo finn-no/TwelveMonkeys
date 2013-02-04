@@ -86,23 +86,35 @@ public final class EXIFReader extends MetadataReader {
     private Directory readDirectory(final ImageInputStream pInput, final long pOffset) throws IOException {
         List<IFD> ifds = new ArrayList<IFD>();
         List<Entry> entries = new ArrayList<Entry>();
+
         pInput.seek(pOffset);
+        long nextOffset = -1;
         int entryCount = pInput.readUnsignedShort();
 
         for (int i = 0; i < entryCount; i++) {
-            entries.add(readEntry(pInput));
+            EXIFEntry entry = readEntry(pInput);
+
+            if (entry == null) {
+//                System.err.println("Expected: " + entryCount + " values, found only " + i);
+                // TODO: Log warning?
+                nextOffset = 0;
+                break;
+            }
+
+            entries.add(entry);
         }
 
-        long nextOffset = pInput.readUnsignedInt();
-        
+        if (nextOffset == -1) {
+            nextOffset = pInput.readUnsignedInt();
+        }
+
         // Read linked IFDs
         if (nextOffset != 0) {
             // TODO: This is probably not okay anymore.. Replace recursion with while loop
-            Directory next = readDirectory(pInput, nextOffset);
-            ifds.add((IFD) ((AbstractCompoundDirectory) next).getDirectory(0));
-//            for (Entry entry : next) {
-//                entries.add(entry);
-//            }
+            AbstractCompoundDirectory next = (AbstractCompoundDirectory) readDirectory(pInput, nextOffset);
+            for (int i = 0; i < next.directoryCount(); i++) {
+                ifds.add((IFD) next.getDirectory(i));
+            }
         }
 
         // TODO: Make what sub-IFDs to parse optional? Or leave this to client code? At least skip the non-TIFF data?
@@ -188,13 +200,13 @@ public final class EXIFReader extends MetadataReader {
         Object value = entry.getValue();
 
         if (value instanceof Byte) {
-            offset = ((Byte) value & 0xff);
+            offset = (Byte) value & 0xff;
         }
         else if (value instanceof Short) {
-            offset = ((Short) value & 0xffff);
+            offset = (Short) value & 0xffff;
         }
         else if (value instanceof Integer) {
-            offset = ((Integer) value & 0xffffffffL);
+            offset = (Integer) value & 0xffffffffL;
         }
         else if (value instanceof Long) {
             offset = (Long) value;
@@ -209,8 +221,13 @@ public final class EXIFReader extends MetadataReader {
     private EXIFEntry readEntry(final ImageInputStream pInput) throws IOException {
         // TODO: BigTiff entries are different
         int tagId = pInput.readUnsignedShort();
-
         short type = pInput.readShort();
+
+        // This isn't really an entry, and the directory entry count was wrong OR bad data...
+        if (tagId == 0 && type == 0) {
+            return null;
+        }
+
         int count = pInput.readInt(); // Number of values
 
         // It's probably a spec violation to have count 0, but we'll be lenient about it
@@ -218,29 +235,33 @@ public final class EXIFReader extends MetadataReader {
             throw new IIOException(String.format("Illegal count %d for tag %s type %s @%08x", count, tagId, type, pInput.getStreamPosition()));
         }
 
-        int valueLength = getValueLength(type, count);
-
-        if (type < 0 || type > 13) {
+        if (type <= 0 || type > 13) {
             // Invalid tag, this is just for debugging
-            System.err.printf("offset: %08x%n", pInput.getStreamPosition() - 8l);
-            System.err.println("tagId: " + tagId);
+            long offset = pInput.getStreamPosition() - 8l;
+
+            System.err.printf("Bad EXIF");
+            System.err.println("tagId: " + tagId + (tagId <= 0 ? " (INVALID)" : ""));
             System.err.println("type: " + type + " (INVALID)");
             System.err.println("count: " + count);
 
             pInput.mark();
-            pInput.seek(pInput.getStreamPosition() - 8);
+            pInput.seek(offset);
 
             try {
-                byte[] bytes = new byte[8 + Math.max(20, valueLength)];
-                pInput.readFully(bytes);
+                byte[] bytes = new byte[8 + Math.max(20, count)];
+                int len = pInput.read(bytes);
 
-                System.err.print("data: " + HexDump.dump(bytes));
-                System.err.println(bytes.length < valueLength ? "..." : "");
+                System.err.print(HexDump.dump(offset, bytes, 0, len));
+                System.err.println(len < count ? "[...]" : "");
             }
             finally {
                 pInput.reset();
             }
+
+            return null;
         }
+
+        int valueLength = getValueLength(type, count);
 
         Object value;
         // TODO: For BigTiff allow size > 4 && <= 8 in addition
@@ -468,7 +489,7 @@ public final class EXIFReader extends MetadataReader {
                 Object value = entry.getValue();
                 if (value instanceof byte[]) {
                     byte[] bytes = (byte[]) value;
-                    System.err.println(HexDump.dump(bytes, 0, Math.min(bytes.length, 128)));
+                    System.err.println(HexDump.dump(0, bytes, 0, Math.min(bytes.length, 128)));
                 }
             }
         }
@@ -485,10 +506,10 @@ public final class EXIFReader extends MetadataReader {
         private static final int WIDTH = 32;
 
         public static String dump(byte[] bytes) {
-            return dump(bytes, 0, bytes.length);
+            return dump(0, bytes, 0, bytes.length);
         }
 
-        public static String dump(byte[] bytes, int off, int len) {
+        public static String dump(long offset, byte[] bytes, int off, int len) {
             StringBuilder builder = new StringBuilder();
 
             int i;
@@ -497,7 +518,7 @@ public final class EXIFReader extends MetadataReader {
                     if (i > 0 ) {
                         builder.append("\n");
                     }
-                    builder.append(String.format("%08x: ", i + off));
+                    builder.append(String.format("%08x: ", i + off + offset));
                 }
                 else if (i > 0 && i % 2 == 0) {
                     builder.append(" ");

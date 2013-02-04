@@ -37,13 +37,12 @@ import java.util.Hashtable;
 /**
  * This class contains methods for basic image manipulation and conversion.
  *
- * @todo Split palette generation out, into ColorModel classes.
- *
  * @author <a href="mailto:harald.kuhr@gmail.com">Harald Kuhr</a>
  * @author last modified by $Author: haku $
  * @version $Id: //depot/branches/personal/haraldk/twelvemonkeys/release-2/twelvemonkeys-core/src/main/java/com/twelvemonkeys/image/ImageUtil.java#3 $
  */
 public final class ImageUtil {
+    // TODO: Split palette generation out, into ColorModel classes (?)
 
     public final static int ROTATE_90_CCW = -90;
     public final static int ROTATE_90_CW = 90;
@@ -58,12 +57,14 @@ public final class ImageUtil {
      * @see #EDGE_REFLECT
      */
     public static final int EDGE_ZERO_FILL = ConvolveOp.EDGE_ZERO_FILL;
+
     /**
      * Alias for {@link ConvolveOp#EDGE_NO_OP}.
      * @see #convolve(java.awt.image.BufferedImage, java.awt.image.Kernel, int)
      * @see #EDGE_REFLECT
      */
     public static final int EDGE_NO_OP = ConvolveOp.EDGE_NO_OP;
+
     /**
      * Adds a border to the image while convolving. The border will reflect the
      * edges of the original image. This is usually a good default.
@@ -73,6 +74,7 @@ public final class ImageUtil {
      * @see #convolve(java.awt.image.BufferedImage, java.awt.image.Kernel, int)
      */
     public static final int EDGE_REFLECT = 2; // as JAI BORDER_REFLECT
+
     /**
      * Adds a border to the image while convolving. The border will wrap the
      * edges of the original image. This is usually the best choice for tiles.
@@ -173,10 +175,6 @@ public final class ImageUtil {
 
     /** Our static image tracker */
     private static MediaTracker sTracker = new MediaTracker(NULL_COMPONENT);
-    //private static Object sTrackerMutex = new Object();
-
-    /** Image id used by the image tracker */
-    //private static int sTrackerId = 0;
 
     /** */
     protected static final AffineTransform IDENTITY_TRANSFORM = new AffineTransform();
@@ -228,7 +226,7 @@ public final class ImageUtil {
      * The new image will have the <em>same</em> {@code ColorModel},
      * {@code Raster} and properties as the original image, if possible.
      * <p/>
-     * If the image is allready a {@code BufferedImage}, it is simply returned
+     * If the image is already a {@code BufferedImage}, it is simply returned
      * and no conversion takes place.
      *
      * @param pOriginal the image to convert.
@@ -236,7 +234,7 @@ public final class ImageUtil {
      * @return a {@code BufferedImage}
      */
     public static BufferedImage toBuffered(RenderedImage pOriginal) {
-        // Don't convert if it allready is a BufferedImage
+        // Don't convert if it already is a BufferedImage
         if (pOriginal instanceof BufferedImage) {
             return (BufferedImage) pOriginal;
         }
@@ -282,7 +280,7 @@ public final class ImageUtil {
      * Converts the {@code RenderedImage} to a {@code BufferedImage} of the
      * given type.
      * <p/>
-     * If the image is allready a {@code BufferedImage} of the given type, it
+     * If the image is already a {@code BufferedImage} of the given type, it
      * is simply returned and no conversion takes place.
      *
      * @param pOriginal the image to convert.
@@ -296,7 +294,7 @@ public final class ImageUtil {
      * @see java.awt.image.BufferedImage#getType()
      */
     public static BufferedImage toBuffered(RenderedImage pOriginal, int pType) {
-        // Don't convert if it allready is BufferedImage and correct type
+        // Don't convert if it already is BufferedImage and correct type
         if ((pOriginal instanceof BufferedImage) && ((BufferedImage) pOriginal).getType() == pType) {
             return (BufferedImage) pOriginal;
         }
@@ -328,7 +326,7 @@ public final class ImageUtil {
      * given type. The new image will have the same {@code ColorModel},
      * {@code Raster} and properties as the original image, if possible.
      * <p/>
-     * If the image is allready a {@code BufferedImage} of the given type, it
+     * If the image is already a {@code BufferedImage} of the given type, it
      * is simply returned and no conversion takes place.
      * <p/>
      * This method simply invokes
@@ -1138,26 +1136,26 @@ public final class ImageUtil {
      * Sharpens an image using a convolution matrix.
      * The sharpen kernel used, is defined by the following 3 by 3 matrix:
      * <TABLE border="1" cellspacing="0">
-     * <TR><TD>0.0</TD><TD>-{@code pAmmount}</TD><TD>0.0</TD></TR>
-     * <TR><TD>-{@code pAmmount}</TD>
-     *     <TD>4.0 * {@code pAmmount} + 1.0</TD>
-     *     <TD>-{@code pAmmount}</TD></TR>
-     * <TR><TD>0.0</TD><TD>-{@code pAmmount}</TD><TD>0.0</TD></TR>
+     * <TR><TD>0.0</TD><TD>-{@code pAmount}</TD><TD>0.0</TD></TR>
+     * <TR><TD>-{@code pAmount}</TD>
+     *     <TD>4.0 * {@code pAmount} + 1.0</TD>
+     *     <TD>-{@code pAmount}</TD></TR>
+     * <TR><TD>0.0</TD><TD>-{@code pAmount}</TD><TD>0.0</TD></TR>
      * </TABLE>
      *
      * @param pOriginal the BufferedImage to sharpen
-     * @param pAmmount the ammount of sharpening
+     * @param pAmount the amount of sharpening
      *
      * @return a BufferedImage, containing the sharpened image.
      */
-    public static BufferedImage sharpen(BufferedImage pOriginal, float pAmmount) {
-        if (pAmmount == 0f) {
+    public static BufferedImage sharpen(BufferedImage pOriginal, float pAmount) {
+        if (pAmount == 0f) {
             return pOriginal;
         }
 
         // Create the convolution matrix
         float[] data = new float[] {
-            0.0f, -pAmmount, 0.0f, -pAmmount, 4f * pAmmount + 1f, -pAmmount, 0.0f, -pAmmount, 0.0f
+            0.0f, -pAmount, 0.0f, -pAmount, 4f * pAmount + 1f, -pAmount, 0.0f, -pAmount, 0.0f
         };
 
         // Do the filtering
@@ -1183,7 +1181,7 @@ public final class ImageUtil {
      * Creates a blurred version of the given image.
      *
      * @param pOriginal the original image
-     * @param pRadius the ammount to blur
+     * @param pRadius the amount to blur
      *
      * @return a new {@code BufferedImage} with a blurred version of the given image
      */
@@ -1196,18 +1194,18 @@ public final class ImageUtil {
         // See: http://en.wikipedia.org/wiki/Gaussian_blur#Implementation
         // Also see http://www.jhlabs.com/ip/blurring.html
 
-        // TODO: Rethink... Fixed ammount and scale matrix instead?
-//        pAmmount = 1f - pAmmount;
-//        float pAmmount = 1f - pRadius;
+        // TODO: Rethink... Fixed amount and scale matrix instead?
+//        pAmount = 1f - pAmount;
+//        float pAmount = 1f - pRadius;
 //
-//        // Normalize ammount
-//        float normAmt = (1f - pAmmount) / 24;
+//        // Normalize amount
+//        float normAmt = (1f - pAmount) / 24;
 //
 //        // Create the convolution matrix
 //        float[] data = new float[] {
 //            normAmt / 2, normAmt, normAmt, normAmt, normAmt / 2,
 //            normAmt, normAmt, normAmt * 2, normAmt, normAmt,
-//            normAmt, normAmt * 2, pAmmount, normAmt * 2, normAmt,
+//            normAmt, normAmt * 2, pAmount, normAmt * 2, normAmt,
 //            normAmt, normAmt, normAmt * 2, normAmt, normAmt,
 //            normAmt / 2, normAmt, normAmt, normAmt, normAmt / 2
 //        };
@@ -1389,18 +1387,18 @@ public final class ImageUtil {
      * Changes the contrast of the image
      *
      * @param pOriginal the {@code Image} to change
-     * @param pAmmount the ammount of contrast in the range [-1.0..1.0].
+     * @param pAmount the amount of contrast in the range [-1.0..1.0].
      *
      * @return an {@code Image}, containing the contrasted image.
      */
-    public static Image contrast(Image pOriginal, float pAmmount) {
+    public static Image contrast(Image pOriginal, float pAmount) {
         // No change, return original
-        if (pAmmount == 0f) {
+        if (pAmount == 0f) {
             return pOriginal;
         }
 
         // Create filter
-        RGBImageFilter filter = new BrightnessContrastFilter(0f, pAmmount);
+        RGBImageFilter filter = new BrightnessContrastFilter(0f, pAmount);
 
         // Return contrast adjusted image
         return filter(pOriginal, filter);
@@ -1411,18 +1409,18 @@ public final class ImageUtil {
      * Changes the brightness of the original image.
      *
      * @param pOriginal the {@code Image} to change
-     * @param pAmmount the ammount of brightness in the range [-2.0..2.0].
+     * @param pAmount the amount of brightness in the range [-2.0..2.0].
      *
      * @return an {@code Image}
      */
-    public static Image brightness(Image pOriginal, float pAmmount) {
+    public static Image brightness(Image pOriginal, float pAmount) {
         // No change, return original
-        if (pAmmount == 0f) {
+        if (pAmount == 0f) {
             return pOriginal;
         }
 
         // Create filter
-        RGBImageFilter filter = new BrightnessContrastFilter(pAmmount, 0f);
+        RGBImageFilter filter = new BrightnessContrastFilter(pAmount, 0f);
 
         // Return brightness adjusted image
         return filter(pOriginal, filter);
@@ -1463,7 +1461,7 @@ public final class ImageUtil {
     }
 
     /**
-     * Tries to use H/W-accellerated code for an image for display purposes.
+     * Tries to use H/W-accelerated code for an image for display purposes.
      * Note that transparent parts of the image might be replaced by solid
      * color. Additional image information not used by the current diplay
      * hardware may be discarded, like extra bith depth etc.
@@ -1476,7 +1474,7 @@ public final class ImageUtil {
     }
 
     /**
-     * Tries to use H/W-accellerated code for an image for display purposes.
+     * Tries to use H/W-accelerated code for an image for display purposes.
      * Note that transparent parts of the image might be replaced by solid
      * color. Additional image information not used by the current diplay
      * hardware may be discarded, like extra bith depth etc.
@@ -1492,7 +1490,7 @@ public final class ImageUtil {
     }
 
     /**
-     * Tries to use H/W-accellerated code for an image for display purposes.
+     * Tries to use H/W-accelerated code for an image for display purposes.
      * Note that transparent parts of the image will be replaced by solid
      * color. Additional image information not used by the current diplay
      * hardware may be discarded, like extra bith depth etc.
@@ -1822,13 +1820,6 @@ public final class ImageUtil {
 
         // Create a local id for use with the mediatracker
         int imageId;
-
-        // NOTE: The synchronization throws IllegalMonitorStateException if
-        // using JIT on J2SE 1.2 (tested version Sun JRE 1.2.2_017).
-        // Works perfectly interpreted... Hmmm...
-        //synchronized (sTrackerMutex) {
-        //imageId = ++sTrackerId;
-        //}
 
         // NOTE: This is very experimental...
         imageId = pImages.length == 1 ? System.identityHashCode(pImages[0]) : System.identityHashCode(pImages);

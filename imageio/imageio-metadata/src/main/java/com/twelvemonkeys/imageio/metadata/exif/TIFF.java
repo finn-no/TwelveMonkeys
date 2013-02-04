@@ -99,8 +99,9 @@ public interface TIFF {
     int TAG_COMPRESSION = 259;
     int TAG_PHOTOMETRIC_INTERPRETATION = 262;
     int TAG_ORIENTATION = 274;
-    int TAG_SAMPLES_PER_PIXELS = 277;
+    int TAG_SAMPLES_PER_PIXEL = 277;
     int TAG_PLANAR_CONFIGURATION = 284;
+    int TAG_SAMPLE_FORMAT = 339;
     int TAG_YCBCR_SUB_SAMPLING = 530;
     int TAG_YCBCR_POSITIONING = 531;
     int TAG_X_RESOLUTION = 282;
@@ -118,8 +119,12 @@ public interface TIFF {
     /// C. Tags relating to image data characteristics
 
     int TAG_TRANSFER_FUNCTION = 301;
+    int TAG_PREDICTOR = 317;
     int TAG_WHITE_POINT = 318;
     int TAG_PRIMARY_CHROMATICITIES = 319;
+    int TAG_COLOR_MAP = 320;
+    int TAG_EXTRA_SAMPLES = 338;
+    int TAG_TRANSFER_RANGE = 342;
     int TAG_YCBCR_COEFFICIENTS = 529;
     int TAG_REFERENCE_BLACK_WHITE = 532;
 
@@ -151,4 +156,11 @@ public interface TIFF {
     int TAG_MODI_PLAIN_TEXT = 37679;
     int TAG_MODI_OLE_PROPERTY_SET = 37680;
     int TAG_MODI_TEXT_POS_INFO = 37681;
+
+    int TAG_TILE_WIDTH = 322;
+    int TAG_TILE_HEIGTH = 323;
+    int TAG_TILE_OFFSETS = 324;
+    int TAG_TILE_BYTE_COUNTS = 325;
+
+    int TAG_JPEG_TABLES = 347;
 }
