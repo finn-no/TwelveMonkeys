@@ -44,14 +44,18 @@ import java.util.Arrays;
  * @version $Id: YCbCrUpsamplerStream.java,v 1.0 31.01.13 09:25 haraldk Exp$
  */
 final class YCbCrUpsamplerStream extends FilterInputStream {
-    static final boolean DEBUG = false;
+    // NOTE: DO NOT MODIFY OR EXPOSE!
+    static final double[] CCIR_601_1_COEFFICIENTS = new double[] {299.0 / 1000.0, 587.0 / 1000.0, 114.0 / 1000.0};
 
     private final int horizChromaSub;
     private final int vertChromaSub;
+    private final int yCbCrPos;
+    private final int columns;
     private final double[] coefficients;
 
     private final int units;
     private final int unitSize;
+    private final int padding;
     private final byte[] decodedRows;
     int decodedLength;
     int decodedPos;
@@ -60,12 +64,14 @@ final class YCbCrUpsamplerStream extends FilterInputStream {
     int bufferLength;
     int bufferPos;
 
-    public YCbCrUpsamplerStream(InputStream stream, int[] chromaSub, int cols, double[] coefficients) {
+    public YCbCrUpsamplerStream(InputStream stream, int[] chromaSub, int yCbCrPos, int columns, double[] coefficients) {
         super(stream);
 
         this.horizChromaSub = chromaSub[0];
         this.vertChromaSub = chromaSub[1];
-        this.coefficients = Arrays.equals(TIFFImageReader.CCIR_601_1_COEFFICIENTS, coefficients) ? null : coefficients;
+        this.yCbCrPos = yCbCrPos;
+        this.columns = columns;
+        this.coefficients = Arrays.equals(CCIR_601_1_COEFFICIENTS, coefficients) ? null : coefficients;
 
         // In TIFF, subsampled streams are stored in "units" of horiz * vert pixels.
         // For a 4:2 subsampled stream like this:
@@ -75,27 +81,11 @@ final class YCbCrUpsamplerStream extends FilterInputStream {
         //
         // In the stream, the order is: Y0,Y1,Y2..Y7,Cb0,Cr0, Y8...Y15,Cb1,Cr1, Y16...
 
-        units = cols / horizChromaSub;
         unitSize = horizChromaSub * vertChromaSub + 2;
-        decodedRows = new byte[cols * vertChromaSub * 3];
+        units = (columns + horizChromaSub - 1) / horizChromaSub;    // If columns % horizChromasSub != 0...
+        padding = units * horizChromaSub - columns;                 // ...each coded row will be padded to fill unit
+        decodedRows = new byte[columns * vertChromaSub * 3];
         buffer = new byte[unitSize * units];
-    }
-
-    @Override
-    public int read() throws IOException {
-        if (decodedLength < 0) {
-            return -1;
-        }
-
-        if (decodedPos >= decodedLength) {
-            fetch();
-
-            if (decodedLength < 0) {
-                return -1;
-            }
-        }
-
-        return decodedRows[decodedPos++];
     }
 
     private void fetch() throws IOException {
@@ -123,8 +113,6 @@ final class YCbCrUpsamplerStream extends FilterInputStream {
     private void decodeRows() throws EOFException {
         decodedLength = decodedRows.length;
 
-        int rowOff = horizChromaSub * units;
-
         for (int u = 0; u < units; u++) {
             if (bufferPos >= bufferLength) {
                 throw new EOFException("Unexpected end of stream");
@@ -136,7 +124,14 @@ final class YCbCrUpsamplerStream extends FilterInputStream {
 
             for (int y = 0; y < vertChromaSub; y++) {
                 for (int x = 0; x < horizChromaSub; x++) {
-                    int pixelOff = 3 * (rowOff * y + horizChromaSub * u + x);
+                    // Skip padding at end of row
+                    int column = horizChromaSub * u + x;
+                    if (column >= columns) {
+                        bufferPos += padding;
+                        break;
+                    }
+
+                    int pixelOff = 3 * (column + columns * y);
 
                     decodedRows[pixelOff] = buffer[bufferPos++];
                     decodedRows[pixelOff + 1] = cb;
@@ -152,7 +147,7 @@ final class YCbCrUpsamplerStream extends FilterInputStream {
                 }
             }
 
-            bufferPos+= 2;
+            bufferPos += 2; // CbCr bytes at end of unit
         }
 
         bufferPos = bufferLength;
@@ -160,8 +155,20 @@ final class YCbCrUpsamplerStream extends FilterInputStream {
     }
 
     @Override
-    public final int read(byte[] b) throws IOException {
-        return read(b, 0, b.length);
+    public int read() throws IOException {
+        if (decodedLength < 0) {
+            return -1;
+        }
+
+        if (decodedPos >= decodedLength) {
+            fetch();
+
+            if (decodedLength < 0) {
+                return -1;
+            }
+        }
+
+        return decodedRows[decodedPos++];
     }
 
     @Override
@@ -178,6 +185,7 @@ final class YCbCrUpsamplerStream extends FilterInputStream {
             }
         }
 
+        // TODO: Read no longer than until row boundary....
         int read = Math.min(decodedLength - decodedPos, len);
         System.arraycopy(decodedRows, decodedPos, b, off, read);
         decodedPos += read;
@@ -216,18 +224,21 @@ final class YCbCrUpsamplerStream extends FilterInputStream {
     }
 
     private void convertYCbCr2RGB(final byte[] yCbCr, final byte[] rgb, final double[] coefficients, final int offset) {
-        // TODO: FixMe: This is bogus...
-        double y  = yCbCr[offset    ] & 0xff;
-        double cb = yCbCr[offset + 1] & 0xff;
-        double cr = yCbCr[offset + 2] & 0xff;
+        double y  = (yCbCr[offset    ] & 0xff);
+        double cb = (yCbCr[offset + 1] & 0xff) - 128; // TODO: The -128 part seems bogus... Consult ReferenceBlackWhite??? But default to these values?
+        double cr = (yCbCr[offset + 2] & 0xff) - 128;
 
         double lumaRed   = coefficients[0];
         double lumaGreen = coefficients[1];
         double lumaBlue  = coefficients[2];
 
-        rgb[offset    ] = clamp((int) Math.round(cr * (2 - 2 * lumaRed) + y));
-        rgb[offset + 2] = clamp((int) Math.round(cb * (2 - 2 * lumaBlue) + y) - 128);
-        rgb[offset + 1] = clamp((int) Math.round((y - lumaRed * (rgb[offset] & 0xff) - lumaBlue * (rgb[offset + 2] & 0xff)) / lumaGreen));
+        int red = (int) Math.round(cr * (2 - 2 * lumaRed) + y);
+        int blue = (int) Math.round(cb * (2 - 2 * lumaBlue) + y);
+        int green = (int) Math.round((y - lumaRed * (rgb[offset] & 0xff) - lumaBlue * (rgb[offset + 2] & 0xff)) / lumaGreen);
+
+        rgb[offset    ] = clamp(red);
+        rgb[offset + 2] = clamp(blue);
+        rgb[offset + 1] = clamp(green);
     }
 
     private static byte clamp(int val) {
@@ -254,7 +265,7 @@ final class YCbCrUpsamplerStream extends FilterInputStream {
          * Initializes tables for YCC->RGB color space conversion.
          */
         private static void buildYCCtoRGBtable() {
-            if (DEBUG) {
+            if (TIFFImageReader.DEBUG) {
                 System.err.println("Building YCC conversion table");
             }
 

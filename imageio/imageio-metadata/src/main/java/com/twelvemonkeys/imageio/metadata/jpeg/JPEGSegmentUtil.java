@@ -95,7 +95,8 @@ public final class JPEGSegmentUtil {
 
         JPEGSegment segment;
         try {
-            while (!isImageDone(segment = readSegment(stream, segmentIdentifiers))) {
+            do {
+                segment = readSegment(stream, segmentIdentifiers);
 //                System.err.println("segment: " + segment);
 
                 if (isRequested(segment, segmentIdentifiers)) {
@@ -106,6 +107,7 @@ public final class JPEGSegmentUtil {
                     segments.add(segment);
                 }
             }
+            while (!isImageDone(segment));
         }
         catch (EOFException ignore) {
             // Just end here, in case of malformed stream
@@ -153,6 +155,9 @@ public final class JPEGSegmentUtil {
 
     static JPEGSegment readSegment(final ImageInputStream stream, Map<Integer, List<String>> segmentIdentifiers) throws IOException {
         int marker = stream.readUnsignedShort();
+        if ((marker >> 8 & 0xff) != 0xff) {
+            throw new IIOException(String.format("Bad marker: %04x", marker));
+        }
         int length = stream.readUnsignedShort(); // Length including length field itself
 
         byte[] data;
