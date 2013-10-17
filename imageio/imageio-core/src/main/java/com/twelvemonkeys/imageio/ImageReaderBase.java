@@ -235,7 +235,7 @@ public abstract class ImageReaderBase extends ImageReader {
 
         // If param is non-null, use it
         if (param != null) {
-            // Try to get the explicit destinaton image
+            // Try to get the explicit destination image
             BufferedImage dest = param.getDestination();
 
             if (dest != null) {
@@ -480,7 +480,7 @@ public abstract class ImageReaderBase extends ImageReader {
             popup.add(background);
 
             ChangeBackgroundAction checkered = new ChangeBackgroundAction("Checkered", checkeredBG);
-            checkered.putValue(Action.SELECTED_KEY, true);
+            checkered.putValue(Action.SELECTED_KEY, backgroundPaint == checkeredBG);
             addCheckBoxItem(checkered, background, group);
             background.addSeparator();
             addCheckBoxItem(new ChangeBackgroundAction("White", Color.WHITE), background, group);
@@ -489,7 +489,9 @@ public abstract class ImageReaderBase extends ImageReader {
             addCheckBoxItem(new ChangeBackgroundAction("Dark", Color.DARK_GRAY), background, group);
             addCheckBoxItem(new ChangeBackgroundAction("Black", Color.BLACK), background, group);
             background.addSeparator();
-            addCheckBoxItem(new ChooseBackgroundAction("Choose...", defaultBG != null ? defaultBG : Color.BLUE), background, group);
+            ChooseBackgroundAction chooseBackgroundAction = new ChooseBackgroundAction("Choose...", defaultBG != null ? defaultBG : Color.BLUE);
+            chooseBackgroundAction.putValue(Action.SELECTED_KEY, backgroundPaint == defaultBG);
+            addCheckBoxItem(chooseBackgroundAction, background, group);
 
             return popup;
         }
@@ -606,7 +608,7 @@ public abstract class ImageReaderBase extends ImageReader {
                     int w = (int) Math.max(Math.min(current.getIconWidth() * zoomFactor, image.getWidth() * 16), image.getWidth() / 16);
                     int h = (int) Math.max(Math.min(current.getIconHeight() * zoomFactor, image.getHeight() * 16), image.getHeight() / 16);
 
-                    setIcon(new BufferedImageIcon(image, Math.max(w, 2), Math.max(h, 2), true));
+                    setIcon(new BufferedImageIcon(image, Math.max(w, 2), Math.max(h, 2), w > image.getWidth() || h > image.getHeight()));
                 }
             }
         }

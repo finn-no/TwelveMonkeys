@@ -28,6 +28,8 @@
 
 package com.twelvemonkeys.imageio.plugins.tiff;
 
+import com.twelvemonkeys.lang.Validate;
+
 import java.awt.image.DataBufferByte;
 import java.awt.image.Raster;
 import java.io.EOFException;
@@ -37,14 +39,14 @@ import java.io.InputStream;
 import java.util.Arrays;
 
 /**
- * YCbCrUpsamplerStream
+ * Input stream that provides on-the-fly conversion and upsampling of TIFF susampled YCbCr samples to (raw) RGB samples.
  *
  * @author <a href="mailto:harald.kuhr@gmail.com">Harald Kuhr</a>
  * @author last modified by $Author: haraldk$
  * @version $Id: YCbCrUpsamplerStream.java,v 1.0 31.01.13 09:25 haraldk Exp$
  */
 final class YCbCrUpsamplerStream extends FilterInputStream {
-    // NOTE: DO NOT MODIFY OR EXPOSE!
+    // NOTE: DO NOT MODIFY OR EXPOSE THIS ARRAY OUTSIDE PACKAGE!
     static final double[] CCIR_601_1_COEFFICIENTS = new double[] {299.0 / 1000.0, 587.0 / 1000.0, 114.0 / 1000.0};
 
     private final int horizChromaSub;
@@ -64,8 +66,8 @@ final class YCbCrUpsamplerStream extends FilterInputStream {
     int bufferLength;
     int bufferPos;
 
-    public YCbCrUpsamplerStream(InputStream stream, int[] chromaSub, int yCbCrPos, int columns, double[] coefficients) {
-        super(stream);
+    public YCbCrUpsamplerStream(final InputStream stream, final int[] chromaSub, final int yCbCrPos, final int columns, final double[] coefficients) {
+        super(Validate.notNull(stream, "stream"));
 
         this.horizChromaSub = chromaSub[0];
         this.vertChromaSub = chromaSub[1];
@@ -94,7 +96,7 @@ final class YCbCrUpsamplerStream extends FilterInputStream {
             int read;
 
             // This *SHOULD* read an entire row of units into the buffer, otherwise decodeRows will throw EOFException
-            while (pos < buffer.length && (read = super.read(buffer, pos, buffer.length - pos)) > 0) {
+            while (pos < buffer.length && (read = in.read(buffer, pos, buffer.length - pos)) > 0) {
                 pos += read;
             }
 
@@ -147,7 +149,7 @@ final class YCbCrUpsamplerStream extends FilterInputStream {
                 }
             }
 
-            bufferPos += 2; // CbCr bytes at end of unit
+            bufferPos += 2; // Skip CbCr bytes at end of unit
         }
 
         bufferPos = bufferLength;
@@ -168,7 +170,7 @@ final class YCbCrUpsamplerStream extends FilterInputStream {
             }
         }
 
-        return decodedRows[decodedPos++];
+        return decodedRows[decodedPos++] & 0xff;
     }
 
     @Override
@@ -185,7 +187,6 @@ final class YCbCrUpsamplerStream extends FilterInputStream {
             }
         }
 
-        // TODO: Read no longer than until row boundary....
         int read = Math.min(decodedLength - decodedPos, len);
         System.arraycopy(decodedRows, decodedPos, b, off, read);
         decodedPos += read;

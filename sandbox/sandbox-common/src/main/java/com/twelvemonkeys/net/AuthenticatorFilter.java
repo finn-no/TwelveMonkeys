@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, Harald Kuhr
+ * Copyright (c) 2008, Harald Kuhr
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -26,22 +26,20 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-package com.twelvemonkeys.imageio.plugins.tiff;
+package com.twelvemonkeys.net;
 
-import com.twelvemonkeys.io.enc.Decoder;
-
-import java.io.IOException;
-import java.io.InputStream;
+import java.net.*;
 
 /**
- * CCITT Group 3 One-Dimensional (G31D) "No EOLs" Decoder.
+ * Interface for filtering Authenticator requests, used by the 
+ * SimpleAuthenticator.
+ *
+ * @see SimpleAuthenticator
+ * @see java.net.Authenticator
  *
  * @author <a href="mailto:harald.kuhr@gmail.com">Harald Kuhr</a>
- * @author last modified by $Author: haraldk$
- * @version $Id: G31DDecoder.java,v 1.0 23.05.12 15:55 haraldk Exp$
+ * @version 1.0
  */
-final class G31DDecoder implements Decoder {
-    public int decode(final InputStream stream, final byte[] buffer) throws IOException {
-        throw new UnsupportedOperationException("Method decode not implemented"); // TODO: Implement
-    }
+public interface AuthenticatorFilter {
+    public boolean accept(InetAddress pAddress, int pPort, String pProtocol, String pPrompt, String pScheme);
 }
